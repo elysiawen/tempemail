@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070a12">
+  <title>MailHub · 临时邮箱聚合台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%236366f1'/%3E%3Cpath d='M5 8.5 12 13l7-4.5' stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Crect x='5' y='7' width='14' height='10' rx='2' stroke='white' stroke-width='1.6' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="5" width="18" height="14" rx="3"/>
+            <path d="m4 8 8 5 8-5"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <div class="brand-name">MailHub</div>
+          <div class="brand-sub">临时邮箱聚合台</div>
+        </div>
+        <span class="brand-tag">LOCAL</span>
+        <button class="icon-btn sidebar-close" id="sidebarClose" type="button" title="关闭菜单">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+
+      <section class="block">
+        <div class="block-head">
+          <h2>选择平台</h2>
+          <span class="hint" id="providerHint">加载中</span>
+        </div>
+        <div class="provider-list" id="providerList"></div>
+      </section>
+
+      <section class="block compose">
+        <div class="block-head">
+          <h2>新建邮箱</h2>
+          <span class="hint" id="composeHint"></span>
+        </div>
+        <label class="field hidden" id="nameField">
+          <span>自定义前缀</span>
+          <input id="nameInput" type="text" placeholder="例如 cs_test001" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field hidden" id="domainField">
+          <span>指定域名</span>
+          <div class="select-wrap">
+            <select id="domainSelect"></select>
+            <svg class="select-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </div>
+        </label>
+        <div class="caps" id="caps"></div>
+        <button class="btn primary block-btn" id="createBtn" type="button">
+          <span class="btn-label">创建新邮箱</span>
+          <span class="spinner hidden"></span>
+        </button>
+        <p class="note" id="composeNote"></p>
+      </section>
+
+      <section class="block history-block">
+        <div class="block-head">
+          <h2>邮箱历史</h2>
+          <button class="link-btn" id="clearHistory" type="button">清空</button>
+        </div>
+        <div class="history" id="historyList"></div>
+      </section>
+
+      <footer class="sidebar-foot">
+        <span class="dot-live"></span>
+        <span>本地服务 · SQLite 持久化</span>
+        <span class="foot-ver">v1.0</span>
+      </footer>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="icon-btn mobile-menu-btn" id="menuBtn" type="button" title="打开菜单">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <div class="current">
+          <div class="current-label">
+            <span>当前邮箱</span>
+            <span class="pill" id="providerPill" hidden></span>
+          </div>
+          <div class="address-line">
+            <span class="address" id="address">尚未创建邮箱</span>
+            <button class="icon-btn" id="copyBtn" type="button" title="复制邮箱地址" disabled>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="11" height="11" rx="2"/>
+                <path d="M5 15V5a2 2 0 0 1 2-2h8"/>
+              </svg>
+            </button>
+          </div>
+          <div class="current-meta" id="mailboxMeta">从左侧选择平台并创建邮箱</div>
+        </div>
+        <div class="topbar-actions">
+          <label class="switch" id="autoRefreshWrap" title="按平台建议频率自动拉取新邮件">
+            <input type="checkbox" id="autoRefresh">
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span class="switch-text">自动刷新</span>
+          </label>
+          <button class="btn ghost" id="refreshBtn" type="button" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+              <path d="M21 3v6h-6"/>
+            </svg>
+            <span>刷新</span>
+            <span class="countdown" id="countdown"></span>
+          </button>
+          <button class="btn ghost danger" id="deleteMailboxBtn" type="button" disabled>删除邮箱</button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <section class="list-pane">
+          <div class="list-head">
+            <span class="list-count" id="listCount">0 封邮件</span>
+            <span class="list-updated" id="lastUpdated"></span>
+          </div>
+          <div class="message-list" id="messageList"></div>
+        </section>
+
+        <section class="reader-pane">
+          <div class="reader-empty" id="readerEmpty">
+            <div class="empty-art">
+              <svg viewBox="0 0 120 90" fill="none">
+                <rect x="12" y="18" width="96" height="60" rx="10" fill="url(#g1)" opacity=".18"/>
+                <rect x="20" y="24" width="80" height="48" rx="7" stroke="url(#g1)" stroke-width="1.6"/>
+                <path d="m24 30 36 23 36-23" stroke="url(#g1)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="96" cy="22" r="7" fill="#111827" stroke="url(#g1)" stroke-width="1.4"/>
+                <path d="m93.5 22 2 2 3.5-4" stroke="url(#g1)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                <defs>
+                  <linearGradient id="g1" x1="0" y1="0" x2="120" y2="90" gradientUnits="userSpaceOnUse">
+                    <stop stop-color="#6366f1"/><stop offset="1" stop-color="#22d3ee"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </div>
+            <h3>选择一封邮件开始阅读</h3>
+            <p>正文会在沙箱 iframe 中渲染，脚本与表单已被移除</p>
+          </div>
+
+          <article class="reader hidden" id="reader">
+            <header class="reader-head">
+              <button class="icon-btn mobile-back-btn" id="readerBackBtn" type="button" title="返回列表">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+              </button>
+              <div class="reader-subject" id="readerSubject"></div>
+              <div class="reader-meta">
+                <div class="avatar lg" id="readerAvatar">?</div>
+                <div class="reader-people">
+                  <div class="reader-from" id="readerFrom"></div>
+                  <div class="reader-to" id="readerTo"></div>
+                </div>
+                <div class="reader-time" id="readerTime"></div>
+              </div>
+              <div class="reader-actions">
+                <div class="tabs" id="viewTabs">
+                  <button type="button" data-view="html" class="active">HTML</button>
+                  <button type="button" data-view="text">纯文本</button>
+                </div>
+                <button class="btn ghost sm" id="emlBtn" type="button" hidden>导出 EML</button>
+                <button class="btn ghost sm danger" id="deleteMsgBtn" type="button">删除</button>
+              </div>
+            </header>
+            <div class="reader-body" id="readerBody">
+              <div class="reader-loading" id="readerLoading">
+                <span class="spinner dark"></span>
+                <span>正在读取邮件正文…</span>
+              </div>
+              <iframe id="mailFrame" class="mail-frame hidden" sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox" title="邮件正文"></iframe>
+              <pre id="mailText" class="mail-text hidden"></pre>
+            </div>
+            <div class="attachments hidden" id="attachments"></div>
+          </article>
+        </section>
+      </div>
+    </main>
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+
+  <div class="modal-backdrop hidden" id="modalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3 id="modalTitle"></h3>
+      <p id="modalMessage"></p>
+      <div class="modal-actions">
+        <button class="btn ghost" id="modalCancel" type="button">取消</button>
+        <button class="btn danger-solid" id="modalConfirm" type="button">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
