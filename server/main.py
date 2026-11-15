@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from curl_cffi.requests.exceptions import RequestException
 
+from .captcha import solve_challenge, start_challenge
 from .database import Database
 from .providers.base import ProviderError
 from .providers.registry import all_providers, get_provider
@@ -43,6 +44,11 @@ class CreateMailboxRequest(BaseModel):
 
 class ChangeDomainRequest(BaseModel):
     domain: str
+
+
+class CaptchaSolveRequest(BaseModel):
+    id: str
+    answer: str
 
 
 # ---------- 错误处理 ----------
@@ -101,6 +107,20 @@ def list_domains(provider_id: str) -> dict[str, Any]:
         "domains": provider.list_domains(),
         "supports_switch": provider.supports_domain_switch,
     }
+
+
+# ---------- 人机验证（用户手动输入） ----------
+
+
+@app.get("/api/captcha")
+def get_captcha() -> dict[str, Any]:
+    return start_challenge()
+
+
+@app.post("/api/captcha/verify")
+def verify_captcha(payload: CaptchaSolveRequest) -> dict[str, Any]:
+    solve_challenge(payload.id, payload.answer)
+    return {"success": True}
 
 
 # ---------- 邮箱 ----------

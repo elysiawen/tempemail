@@ -184,6 +184,24 @@
 
   <div class="toasts" id="toasts"></div>
 
+  <div class="modal-backdrop hidden" id="captchaBackdrop">
+    <div class="modal captcha-modal" role="dialog" aria-modal="true">
+      <h3>需要人机验证</h3>
+      <p>linshiyouxiang.net 检测到请求频繁，请输入图中 4 位数字后继续。</p>
+      <div class="captcha-box">
+        <img id="captchaImage" alt="验证码" title="点击换一张">
+        <button class="link-btn" id="captchaRefresh" type="button">换一张</button>
+      </div>
+      <input id="captchaInput" class="captcha-input" type="text" maxlength="4" inputmode="numeric"
+             pattern="[0-9]{4}" placeholder="4 位数字" autocomplete="off" spellcheck="false">
+      <p class="captcha-error hidden" id="captchaError"></p>
+      <div class="modal-actions">
+        <button class="btn ghost" id="captchaCancel" type="button">取消</button>
+        <button class="btn primary" id="captchaSubmit" type="button">验证并继续</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop hidden" id="modalBackdrop">
     <div class="modal" role="dialog" aria-modal="true">
       <h3 id="modalTitle"></h3>

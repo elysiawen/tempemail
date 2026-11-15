@@ -16,22 +16,33 @@ MAIL_RE = re.compile(r"const activeMail = '([^']+)'")
 CODE_RE = re.compile(r"const activeMailCode = '([^']+)'")
 BODY_RE = re.compile(r"const emailContent = `([\s\S]*?)`;")
 
-_CAPTCHA_MARKERS = ("rate-captcha", "安全验证", "人机验证", "请完成验证")
+_CAPTCHA_MARKERS = (
+    'id="rateCaptchaForm"',
+    "captcha-card",
+    "安全验证",
+    "检测到请求过于频繁",
+)
+
+
+def _captcha_error() -> ProviderError:
+    return ProviderError(
+        "该平台触发了人机验证，请输入图中 4 位数字继续",
+        code="captcha_required",
+        status=429,
+    )
 
 
 def _detect_captcha(text: str) -> None:
     if not text:
         return
     if any(marker in text for marker in _CAPTCHA_MARKERS):
-        raise ProviderError(
-            "该平台触发了 IP 频率限制（图形验证码），请等待几分钟再试",
-            code="rate_limited",
-            status=429,
-        )
+        raise _captcha_error()
 
 
 def _check(resp) -> None:
     _detect_captcha(resp.text or "")
+    if resp.status_code == 429:
+        raise _captcha_error()
     if resp.status_code == 403:
         raise ProviderError("请求被平台拒绝（可能触发风控）", code="rate_limited", status=429)
     if resp.status_code >= 500:
@@ -41,9 +52,12 @@ def _check(resp) -> None:
 def _json(resp):
     _check(resp)
     try:
-        return resp.json()
+        data = resp.json()
     except Exception as exc:  # noqa: BLE001
         raise ProviderError("平台返回了无法解析的响应", code="bad_response", status=502) from exc
+    if isinstance(data, dict) and data.get("need_captcha"):
+        raise _captcha_error()
+    return data
 
 
 class Provider(BaseProvider):
@@ -51,7 +65,7 @@ class Provider(BaseProvider):
     name = "linshiyouxiang.net"
     site = "https://www.linshiyouxiang.net"
     accent = "#38bdf8"
-    tagline = "打开即建箱 · 支持换域名"
+    tagline = "打开即建箱 · 可选域名"
 
     supports_name = False
     supports_domain = True
@@ -62,7 +76,7 @@ class Provider(BaseProvider):
 
     poll_interval_ms = 30000
     suggest_auto_refresh = False
-    note = "限流严格（约 10 次请求触发图形验证码），默认关闭自动刷新，建议手动刷新。"
+    note = "限流较严（约 10 次请求触发验证码），默认关闭自动刷新；触发后按弹窗输入 4 位数字即可继续。"
 
     def create(self, session, name=None, domain=None) -> BoxState:
         resp = session.get(f"{BASE}/", headers=HTML_HEADERS, timeout=45)

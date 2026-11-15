@@ -52,6 +52,13 @@
     modalMessage: $('#modalMessage'),
     modalCancel: $('#modalCancel'),
     modalConfirm: $('#modalConfirm'),
+    captchaBackdrop: $('#captchaBackdrop'),
+    captchaImage: $('#captchaImage'),
+    captchaInput: $('#captchaInput'),
+    captchaError: $('#captchaError'),
+    captchaRefresh: $('#captchaRefresh'),
+    captchaCancel: $('#captchaCancel'),
+    captchaSubmit: $('#captchaSubmit'),
   };
 
   const state = {
@@ -72,6 +79,7 @@
     listLoaded: false,
     readMap: storeGet('read', {}),
     lastFetchAt: 0,
+    captcha: { id: null, pending: null, wasAutoRefresh: false, busy: false },
   };
 
   // ---------------- 基础工具 ----------------
@@ -246,8 +254,7 @@
 
     const caps = [];
     if (provider.custom_name) caps.push('自定义前缀');
-    if (provider.custom_domain && !provider.domain_switch) caps.push('指定域名');
-    if (provider.domain_switch) caps.push('换域名');
+    if (provider.custom_domain || provider.domain_switch) caps.push('指定域名');
     if (provider.eml) caps.push('EML 导出');
     if (provider.attachments) caps.push('附件下载');
     if (provider.delete_mailbox) caps.push('可删除邮箱');
@@ -289,6 +296,10 @@
       state.domains[providerId] = (data && data.domains) || [];
     } catch (error) {
       state.domains[providerId] = [];
+      if (error.code === 'captcha_required') {
+        delete state.domains[providerId];
+        showCaptcha(() => ensureDomains(providerId));
+      }
     } finally {
       state.domainLoading[providerId] = false;
     }
@@ -572,6 +583,10 @@
       await loadMessages({ silent: true });
       startPolling();
     } catch (error) {
+      if (error.code === 'captcha_required') {
+        showCaptcha(() => createMailbox());
+        return;
+      }
       toast(error.message, 'error');
     } finally {
       setCreating(false);
@@ -661,6 +676,10 @@
         openMessage(state.messages[0].id);
       }
     } catch (error) {
+      if (error.code === 'captcha_required') {
+        showCaptcha(() => loadMessages({ silent: false }));
+        return;
+      }
       if (!silent) toast(error.message, 'error');
       if (error.code === 'rate_limited') {
         if (silent) toast(error.message, 'error');
@@ -827,6 +846,11 @@
       loadHistory();
     } catch (error) {
       if (state.selectedId !== messageId) return;
+      if (error.code === 'captcha_required') {
+        els.readerLoading.innerHTML = '<span class="spinner dark"></span><span>需要完成人机验证</span>';
+        showCaptcha(() => openMessage(messageId));
+        return;
+      }
       els.readerLoading.innerHTML = `<span class="spinner dark"></span><span>${escapeHtml(
         error.message,
       )}</span>`;
@@ -978,6 +1002,11 @@
       confirmText: '删除',
     });
     if (!confirmed) return;
+    await performDeleteMessage(messageId);
+  }
+
+  async function performDeleteMessage(messageId) {
+    if (!state.mailbox) return;
     try {
       await api(
         `/api/mailboxes/${encodeURIComponent(state.mailbox.handle)}/messages/${encodeURIComponent(
@@ -991,6 +1020,10 @@
       loadMessages({ silent: true });
       loadHistory();
     } catch (error) {
+      if (error.code === 'captcha_required') {
+        showCaptcha(() => performDeleteMessage(messageId));
+        return;
+      }
       toast(error.message, 'error');
     }
   }
@@ -1056,6 +1089,102 @@
     const resolve = modalResolve;
     modalResolve = null;
     if (resolve) resolve(result);
+  }
+
+  // ---------------- 人机验证 ----------------
+
+  function setCaptchaError(message) {
+    els.captchaError.textContent = message || '';
+    els.captchaError.classList.toggle('hidden', !message);
+  }
+
+  async function showCaptcha(pendingAction) {
+    if (pendingAction) state.captcha.pending = pendingAction;
+    if (!els.captchaBackdrop.classList.contains('hidden')) return;
+
+    state.captcha.wasAutoRefresh = state.autoRefresh;
+    state.autoRefresh = false;
+    els.autoRefresh.checked = false;
+    if (state.mailbox) storeSet(`auto.${state.mailbox.provider}`, false);
+    stopPolling();
+    renderCountdown();
+
+    els.captchaBackdrop.classList.remove('hidden');
+    els.captchaInput.value = '';
+    setCaptchaError('');
+    await loadCaptchaImage();
+  }
+
+  async function loadCaptchaImage() {
+    els.captchaImage.removeAttribute('src');
+    els.captchaImage.style.opacity = '0.35';
+    setCaptchaError('');
+    try {
+      const data = await api(`/api/captcha?t=${Date.now()}`);
+      state.captcha.id = data.id;
+      els.captchaImage.src = data.image;
+      els.captchaImage.style.opacity = '1';
+      els.captchaInput.focus();
+    } catch (error) {
+      setCaptchaError(error.message);
+    }
+  }
+
+  function closeCaptcha() {
+    els.captchaBackdrop.classList.add('hidden');
+    state.captcha.id = null;
+    state.captcha.pending = null;
+    state.captcha.busy = false;
+    els.captchaSubmit.disabled = false;
+    els.captchaSubmit.textContent = '验证并继续';
+  }
+
+  async function submitCaptcha() {
+    if (state.captcha.busy) return;
+    const answer = els.captchaInput.value.trim();
+    if (!/^\d{4}$/.test(answer)) {
+      setCaptchaError('请输入图中 4 位数字');
+      els.captchaInput.focus();
+      return;
+    }
+    if (!state.captcha.id) {
+      await loadCaptchaImage();
+      return;
+    }
+
+    state.captcha.busy = true;
+    els.captchaSubmit.disabled = true;
+    els.captchaSubmit.textContent = '验证中…';
+    try {
+      await api('/api/captcha/verify', {
+        method: 'POST',
+        body: JSON.stringify({ id: state.captcha.id, answer }),
+      });
+      const wasAutoRefresh = state.captcha.wasAutoRefresh;
+      const action = state.captcha.pending;
+      closeCaptcha();
+      toast('验证通过', 'success');
+      if (wasAutoRefresh && state.mailbox) {
+        state.autoRefresh = true;
+        els.autoRefresh.checked = true;
+        storeSet(`auto.${state.mailbox.provider}`, true);
+        startPolling();
+      }
+      if (action) {
+        setTimeout(action, 120);
+      } else if (state.mailbox) {
+        loadMessages({ silent: false });
+      }
+    } catch (error) {
+      state.captcha.busy = false;
+      els.captchaSubmit.disabled = false;
+      els.captchaSubmit.textContent = '验证并继续';
+      setCaptchaError(error.message);
+      if (error.code === 'captcha_invalid' || error.code === 'captcha_expired') {
+        els.captchaInput.value = '';
+        await loadCaptchaImage();
+      }
+    }
   }
 
   // ---------------- 事件 ----------------
@@ -1150,9 +1279,31 @@
       if (event.target === els.modalBackdrop) closeModal(false);
     });
 
+    els.captchaRefresh.addEventListener('click', loadCaptchaImage);
+    els.captchaImage.addEventListener('click', loadCaptchaImage);
+    els.captchaSubmit.addEventListener('click', submitCaptcha);
+    els.captchaInput.addEventListener('input', () => {
+      els.captchaInput.value = els.captchaInput.value.replace(/\D/g, '').slice(0, 4);
+    });
+    els.captchaInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        submitCaptcha();
+      }
+    });
+    els.captchaCancel.addEventListener('click', () => {
+      closeCaptcha();
+      toast('已取消验证，自动刷新保持关闭', 'info');
+    });
+    els.captchaBackdrop.addEventListener('click', (event) => {
+      if (event.target === els.captchaBackdrop) closeCaptcha();
+    });
+
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
-        if (!els.modalBackdrop.classList.contains('hidden')) {
+        if (!els.captchaBackdrop.classList.contains('hidden')) {
+          closeCaptcha();
+        } else if (!els.modalBackdrop.classList.contains('hidden')) {
           closeModal(false);
         } else if (els.sidebar.classList.contains('open')) {
           closeDrawer();
