@@ -12,7 +12,11 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from curl_cffi.requests.exceptions import RequestException
+
+try:
+    from curl_cffi.requests.exceptions import RequestException
+except ImportError:  # curl_cffi 新版把它命名为 RequestsException
+    from curl_cffi.requests.exceptions import RequestsException as RequestException
 
 from .captcha import solve_challenge, start_challenge
 from .database import Database
