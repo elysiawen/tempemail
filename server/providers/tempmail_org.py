@@ -10,6 +10,7 @@ from .base import (
     ProviderError,
     filename_from_headers,
     html_to_text,
+    normalize_html_body,
     split_sender,
 )
 
@@ -123,7 +124,7 @@ class Provider(BaseProvider):
         )
         data = _json(resp)
         detail = _summary(data)
-        body_html = data.get("bodyHtml") or ""
+        body_html = normalize_html_body(data.get("bodyHtml") or "")
         body_text = html_to_text(body_html) or (data.get("bodyPreview") or "").strip()
         detail.update(
             {

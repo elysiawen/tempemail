@@ -13,6 +13,7 @@ from .base import (
     ProviderError,
     filename_from_headers,
     html_to_text,
+    normalize_html_body,
     split_sender,
 )
 
@@ -90,7 +91,7 @@ def _attachments(item: dict[str, Any]) -> list[dict[str, Any]]:
 def _summary(item: dict[str, Any]) -> dict[str, Any]:
     from_raw = item.get("from") or ""
     name, email = split_sender(from_raw)
-    body_text = item.get("body_text") or html_to_text(item.get("body_html") or "")
+    body_text = item.get("body_text") or html_to_text(normalize_html_body(item.get("body_html") or ""))
     preview = " ".join(body_text.split())[:180]
     return {
         "id": item.get("id") or "",
@@ -162,7 +163,7 @@ class Provider(BaseProvider):
         resp = session.get(f"{API}/v3/message/{message_id}", timeout=30)
         data = _json(resp)
         detail = _summary(data)
-        body_html = data.get("body_html") or ""
+        body_html = normalize_html_body(data.get("body_html") or "")
         detail.update(
             {
                 "body_html": body_html,

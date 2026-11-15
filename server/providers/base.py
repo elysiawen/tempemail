@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html as html_lib
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -129,6 +130,31 @@ def split_sender(raw: str) -> tuple[str, str]:
     if "@" in raw:
         return raw, raw
     return raw, ""
+
+
+def normalize_html_body(value: str) -> str:
+    """部分平台会把 HTML 再 JSON 转义一层，这里还原；正常 HTML 原样返回。"""
+    if not value:
+        return ""
+    text = value.strip()
+    escaped_tags = text.count("\\u003c")
+    if escaped_tags < 3 or "<" in text:
+        return text
+    try:
+        return json.loads(f'"{text}"')
+    except Exception:  # noqa: BLE001
+        text = re.sub(
+            r"\\u([0-9a-fA-F]{4})",
+            lambda match: chr(int(match.group(1), 16)),
+            text,
+        )
+        return (
+            text.replace("\\/", "/")
+            .replace('\\"', '"')
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\t", "\t")
+        )
 
 
 def html_to_text(html: str) -> str:
