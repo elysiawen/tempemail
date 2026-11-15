@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -15,6 +16,31 @@ HTML_HEADERS = {
 MAIL_RE = re.compile(r"const activeMail = '([^']+)'")
 CODE_RE = re.compile(r"const activeMailCode = '([^']+)'")
 BODY_RE = re.compile(r"const emailContent = `([\s\S]*?)`;")
+WRAPPER_RE = re.compile(r'<div id="content-wrapper">([\s\S]*?)</div>')
+
+
+def _decode_email_html(raw: str) -> str:
+    """详情页里的邮件正文是 JSON 转义字符串，需要解码后才能当 HTML 渲染。"""
+    wrapper = WRAPPER_RE.search(raw)
+    content = (wrapper.group(1) if wrapper else raw).strip()
+    if not any(token in content for token in ("\\u003c", "\\u0022", "\\n", '\\"')):
+        return content
+    try:
+        return json.loads(f'"{content}"')
+    except Exception:  # noqa: BLE001
+        content = re.sub(
+            r"\\u([0-9a-fA-F]{4})",
+            lambda match: chr(int(match.group(1), 16)),
+            content,
+        )
+        return (
+            content.replace("\\/", "/")
+            .replace('\\"', '"')
+            .replace("\\n", "\n")
+            .replace("\\r", "\r")
+            .replace("\\t", "\t")
+        )
+
 
 _CAPTCHA_MARKERS = (
     'id="rateCaptchaForm"',
@@ -169,7 +195,7 @@ class Provider(BaseProvider):
         match = BODY_RE.search(text)
         if not match:
             raise ProviderError("未能从详情页解析出正文，站点可能改版", code="parse_error", status=502)
-        body_html = match.group(1).strip()
+        body_html = _decode_email_html(match.group(1))
         return {
             "id": message_id,
             "body_html": body_html,
